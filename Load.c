@@ -3,40 +3,55 @@
 #include <string.h>
 #include <limits.h>
 
-#define buffer_size 41
+#define buffer_size 42
 #define mem_size 100
 
-typedef unsigned char byte_t; //to eliminate signed misinterpretation
+typedef unsigned char byte_t; //to eliminate signed misinterpretation while converting back to integer from Ascii stored format
 
 char M[mem_size][4]={'\0'}; // Memory
 char IR[4]; // Instruction
-int IC; // Counter
+short int IC; // 2 byte Counter
 int C; // Toggle 0-F 1-T
 char R[5]; // Register
-char A[5]; // Accumalator
+char A[4]; // Accumalator
 int overflow; // Overflow
 char buffer[buffer_size]; // 40 byte buffer
 int SI; //Interrrpt
-int JC = 0; //JOB Counter
+int JC = 0; //JOB Counter for debugging purpose
 div_t res; // struct for division has quot and rem
 FILE *input = NULL,*output = NULL ;
 
-
 //functions
-void init(); 
+void init(); //intializes memory, register with space, buffer and C with 0  
 void MOS(); //Master Mode
 void EUP(); //Execute User Program
 void SE(); //Start Execution
-void WRITE();
-void READ();
-void TERMINATE();
-void LoadR();
-void StoreR();
-void compare();
-void add();
-void sub();
-void division();
-void mul();
+void READ(); //Reads 1 block data from data card to specified memory
+void WRITE(); //Writes 1 block to output file
+void TERMINATE(); //Terminates current job by writing 2 blank lines
+void LoadR(); //Loads 1 word from specified memory(1 word) to Register
+void StoreR(); //Stores content of R to specified memory(1 word)
+void compare(); //Compares content of R and specified memory and sets carry flag accordingly
+int char_int(); // converts IR[2,3] to integer address to acess Memoery location
+void add(); //Adds Content of A and specified memory location and stores in A
+void sub(); //
+void division(); // Useing in built in division function from stlib
+void mul(); //
+int toINT(byte_t *m); //converts Ascii to Integer
+void storeInt(int n, byte_t *m); //Stores integer from dta to memory, Not useful anymore due to change in LD functionality need to be discarded 
+void printM(); //Prints Ascii encoded Integer to output file in integer 
+void NumStore(byte_t *m); //Stores value of Accumlator into Memory location
+void ALoad(char *r,int n); // Loads Accumlator 
+void NumLoad(char *r); // Like GD but for numbers.
+void L_shift(); 
+void R_shift();
+void AND();
+void OR();
+void XOR();
+void NOT();
+
+
+
 
 int char_int(){
     return ((int)IR[2]-48)*10+((int)IR[3]-48);
@@ -81,47 +96,42 @@ void init(){
     }
     
     R[4]='\0';
-    A[5]='\0';
 
     IC = 0; // counter to 0
     
     C = 0; // flag to false by default
 }
+
 void LOAD(){
     int load = 0,m=0;
     while (fgets(buffer,sizeof(buffer),input)){
         char *check = NULL;
-        if ((check=strstr(buffer,"$AMJ")) != NULL)
-        {
+        if ((check=strstr(buffer,"$AMJ")) != NULL){
             init();
             load = 1;
             continue;
         }
-        else if ((check=strstr(buffer,"$DTA")) != NULL)
-        {
+        else if ((check=strstr(buffer,"$DTA")) != NULL){
             load = 0;
             SE();
         }
-        else if ((check=strstr(buffer,"$END")) != NULL)
-        {
+        else if ((check=strstr(buffer,"$END")) != NULL){
             printf("\nEND of Job %d\n",++JC);
+            LOAD();
         }
-        
-        if (load)
-        {
-            printf("%s",buffer);
+        if (load){
+            // printf("%s",buffer);
             char *r= buffer;
-            int i,l;
-        while ( *r != '\n' )
-        {
-            l=( *r != 'H' )?4:1;
+            int l;
+            while ( *r != '\n' ){
+            l = ( *r != 'H' )?4:1;
+            
             for (int j = 0; j < l; j++,r++)
-            {
                 M[m][j]= *r;
-            }
+
             m++;
-        }
-        }   
+            } 
+        }  
     }
 }
 
@@ -144,8 +154,7 @@ void READ(){
 
 void WRITE(){
     int add =(char_int()),j=0;
-    for (int i = add ; i < add + 10; i++)
-    {
+    for (int i = add ; i < add + 10; i++){
         for(int j=0; j<4 ; j++)
         fputc(M[i][j],output);
     }
@@ -156,7 +165,6 @@ void TERMINATE(){
     fputc('\n',output);
     fputc('\n',output);
     memdump();
-    LOAD();
 }
 
 void LoadR(){
@@ -202,39 +210,57 @@ void storeInt(int n, byte_t *m){
     // printf("M[N]:%d\n ", toINT(M[(char_int())]));
 }
 
-void NumStore(byte_t *m) {
-    int n = toINT(A), b = 0;
-    char a[12];
-    
-    printf("n: %d\n", n);
-    while (n != 0) {
-        a[b++] = (char)(n % 10 + '0');
-        n = n / 10;
-    }
-    a[b] = '\0';
-    
-
-    printf("\nB: %d\nC: ", b);
-
-    while (b-- >=0) {
-        for (int i = 0; i < 4; i++) {
-            if(b-i<0)
-            break;
-            printf("%c", a[b]);
-            m[i] = a[b-i]; 
-        }
-        m++;
-    }
-    printf("\nM: %s\tb: %d", m, b);
+void printM(){
+    int n = toINT(M[(char_int())]);
+    fprintf(output,"%d",n);
 }
 
+void NumStore(byte_t *m) {
+    // int n = toINT(A), b = 0;
+    // char a[12];
+    
+    // printf("n: %d\n", n);
+    // while (n != 0) {
+    //     a[b++] = (char)(n % 10 + '0');
+    //     n = n / 10;
+    // }
+    // a[b] = '\0';
+    
 
-void NumLoad(char *R,int n){
+    // printf("\nB: %d\nC: ", b);
+
+    // while (b-- >=0) {
+    //     for (int i = 0; i < 4; i++) {
+    //         if(b-i<0)
+    //         break;
+    //         printf("%c", a[b]);
+    //         m[i] = a[b-i]; 
+    //     }
+    //     m++;
+    // }
+    // printf("\nM: %s\tb: %d", m, b);
+    for (int i = 0; i < 4 ; i++)
+        m[i]=A[i];
+}
+
+void ALoad(char *r,int n){
+    r[0]=(char)(n>>24);
+    r[1]=(char)(n>>16)&(255);
+    r[2]=(char)(n>>8)&(255);
+    r[3]=(char)(n>>0)&(255);
+}
+
+void NumLoad(char *r){
+    int n; 
+    while ( fscanf(input,"%d",&n))
+    {
+        r[0]=(char)(n>>24);
+        r[1]=(char)(n>>16)&(255);
+        r[2]=(char)(n>>8)&(255);
+        r[3]=(char)(n>>0)&(255);
+        r+=4;
+    }
     // printf("n:%d\n",n);
-    R[0]=(char)(n>>24);
-    R[1]=(char)(n>>16)&(255);
-    R[2]=(char)(n>>8)&(255);
-    R[3]=(char)(n>>0)&(255);
     // printf("--%d--\n",R[0]);
     // printf("--%d--\n",R[1]);
     // printf("--%d--\n",R[2]);
@@ -293,14 +319,14 @@ void L_shift(){
     // printf("%d\n",char_int());
     int n = toINT(A)<<char_int();
     // printf("n:%d\n",n);
-    NumLoad(R,n);
+    ALoad(A,n);
     // printf("R:%s",R);
 }
 
 void R_shift(){
     int n = toINT(A)>>char_int();
     printf("n:%d\n",n);
-    NumLoad(R,n);
+    ALoad(A,n);
     // printf("R:%s",R);
 }
 
@@ -311,7 +337,7 @@ void AND(){
     // printf("A:%d\tM[]:%d\n",toINT(A),toINT(M[char_int()]));
     int a = toINT(A) & toINT(M[char_int()]);
     printf("%d",a);
-    NumLoad(R,a);
+    ALoad(A,a);
 }
 
 void OR(){
@@ -321,7 +347,7 @@ void OR(){
     // printf("A:%d\tM[]:%d\n",toINT(A),toINT(M[char_int()]));
     int a = toINT(A) | toINT(M[char_int()]);
     printf("%d",a);
-    NumLoad(R,a);
+    ALoad(A,a);
 }
 
 void XOR(){
@@ -331,13 +357,13 @@ void XOR(){
     // printf("A:%d\tM[]:%d\n",toINT(A),toINT(M[char_int()]));
     int a = toINT(A) ^ toINT(M[char_int()]);
     printf("%d",a);
-    NumLoad(R,a);
+    ALoad(A,a);
 }
 
 void NOT(){
-    int a = ~toINT(A);
+    int a = !toINT(A);
     printf("%d",a);
-    NumLoad(R,a);
+    ALoad(A,a);
 }
 
 void MOS(){
@@ -357,8 +383,10 @@ void EUP(){
     else if (IR[0] == 'S' && IR[1] == 'R'){ StoreR(); }
     else if (IR[0] == 'B' && IR[1] == 'T'){ if (C) IC = (char_int()); }
     else if (IR[0] == 'C' && IR[1] == 'R'){ compare(); }
-    else if (IR[0] == 'L' && IR[1] == 'A'){ int n; fscanf(input,"%d",&n); NumLoad(A,n);}
+
+    else if (IR[0] == 'L' && IR[1] == 'D'){ NumLoad(M[char_int()]);}
     else if (IR[0] == 'S' && IR[1] == 'A'){ NumStore(M[(char_int())]); }
+    else if (IR[0] == 'P' && IR[1] == 'M'){ printM(); }
     else if (IR[0] == 'A' && IR[1] == 'D'){ add(); }
     else if (IR[0] == 'S' && IR[1] == 'B'){ sub(); }
     else if (IR[0] == 'D' && IR[1] == 'I'){ division(); }
@@ -383,14 +411,18 @@ void SE(){
 
 int main()
 {
-    input = fopen("Inp.txt", "r");
+    input = fopen("input.txt", "r");
     output = fopen("output.txt","w");
+    freopen("Terminal.txt","w",stdout);
 
     if (input == NULL || output == NULL) {
         printf("The file is not opened");
         exit(0);
     }
     LOAD();
+
+    fclose(input);
+    fclose(output);
 
     return 0;
 }
